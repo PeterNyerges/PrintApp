@@ -1,0 +1,70 @@
+package org.example;
+
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.printing.PDFPrintable;
+
+import java.awt.print.PrinterException;
+import java.awt.print.PrinterJob;
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.stream.Stream;
+
+public class Main {
+
+    public static void main(String[] args) {
+        Path printDir = Paths.get("J:/Print");
+        Path logDir = printDir.resolve("Log");
+        try {
+            Files.createDirectories(logDir);
+        } catch (IOException e) {
+            System.err.println("Nem sikerült a Log mappa létrehozása: " + e.getMessage());
+            return;
+        }
+
+        try (Stream<Path> paths = Files.list(printDir)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".pdf"))
+                    .forEach(Main::printAndMove);
+        } catch (IOException e) {
+            System.err.println("Hiba a PDF fájlok listázása közben: " + e.getMessage());
+        }
+    }
+
+    private static void printAndMove(Path pdfPath) {
+        String logFilename = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + ".txt";
+        Path logFile = Paths.get("J:/Print/Log").resolve(logFilename);
+
+        try (PDDocument document = PDDocument.load(pdfPath.toFile())) {
+            PrinterJob job = PrinterJob.getPrinterJob();
+            job.setPrintable(new PDFPrintable(document));
+
+            // A nyomtatási párbeszédablak kihagyása és a nyomtatás automatikus indítása
+            job.print();
+
+            document.close(); // Zárja be a dokumentumot a nyomtatás után
+
+            Files.write(logFile, (pdfPath.getFileName() + " sikeres nyomtatás " + LocalDateTime.now() + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+
+            // A kinyomtatott PDF-fájl áthelyezése a Print mappa Printed nevű almappájába
+            Path printedFolder = pdfPath.getParent().resolve("Printed");
+            if (!Files.exists(printedFolder)) {
+                Files.createDirectory(printedFolder);
+            }
+            Files.move(pdfPath, printedFolder.resolve(pdfPath.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
+
+        } catch (IOException | PrinterException e) {
+            System.err.println("Hiba történt a nyomtatás közben: " + e.getMessage());
+            try {
+                Files.write(logFile, (pdfPath.getFileName() + " sikertelen nyomtatás " + LocalDateTime.now() + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException ex) {
+                System.err.println("Nem sikerült a log fájl írása: " + ex.getMessage());
+            }
+        }
+    }
+
+
+
+}
